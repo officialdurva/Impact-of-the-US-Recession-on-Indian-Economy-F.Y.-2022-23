@@ -1,0 +1,273 @@
+---
+title: "Time Series Analysis and Forecasting"
+output: html_document
+---
+
+```{=html}
+<style>
+
+.objective{
+  font-size: 25px;
+  width:90%;
+  margin:20px auto;
+  padding:10px;
+  position:relative;
+  border-radius:5px;
+  box-shadow:0 0 15px 5px #ccc;
+  border-left:5px solid blue;
+  background-color: #ADD8E6;
+}
+blockquote{
+  width:90%;
+  padding:10px;
+  position:relative;
+  border-radius:5px;
+  border-left:5px solid blue;
+  background-color: #D4EFF8;
+}
+hr {
+  border-top: 5px solid #095484;
+}
+h1 {
+  text-align: center;
+}
+h3 {
+    color: #000949;
+    text-decoration: underline;
+}
+</style>
+```
+
+
+<div class="objective"> OBJECTIVE: TO FORECAST GROWTH OR CONTRACTION OF US ECONOMY </div>
+
+<hr>
+
+# IMPORTING LIBRARIES
+
+<hr>
+```{r}
+library(ggplot2)
+library(forecast)
+library(tseries)
+```
+
+<hr>
+
+# THE DATASET
+
+<hr>
+
+```{R}
+data=read.csv(file.choose(),header=T)
+data=data.frame(data,row.names=data$DATE)
+data$DATE=NULL
+dim(data)
+head(data)
+```
+
+```{r}
+gdp=ts(data, frequency= 4, start=c(1960,1))
+autoplot(gdp)
+```
+```{r}
+plot(decompose(gdp, type='multiplicative'))
+```
+
+```{r}
+gdpforecasts <- HoltWinters(gdp, beta=T, gamma=FALSE)
+plot(gdpforecasts)
+```
+```{r}
+library('forecast')
+gdpforecasts2 <- forecast(gdpforecasts, h=12)
+plot(gdpforecasts2)
+```
+
+This shows exponential growth in 2023-25. However, in current situation, we see the growth to be stagnant in US if not staggering.Said that, in long term, the GDP IS forecasted to be increasing significantly.
+
+> Here we see US GDP (in million dollars) from 1960 to 2022. It is difficult to forecast GDP (in million dollars) in short period because of the trend component present. So, instead of using GDP (in million dollars), we'll proceed to use GDP (Growth rate) to forecast, which doesn't have a strong trend component, and the values approximately lie between -12 to 12. Also, it is much more interpretable
+
+### IMPORTING AND PREPARING DATASET (GDP GROWTH RATE)
+
+```{r}
+data=read.csv(file.choose(),header=T)
+```
+
+NOTE: The dataset is fetched from Federal Reserve Economic Data | FRED | St. Louis Fed and is seasonally differenced.
+
+### INDEXING DATE AND DATA MANIPULATION
+
+```{r}
+head(data)
+data=data.frame(data,row.names=data$DATE)
+data$DATE=NULL
+dim(data)
+ndata=data[-c(1:9)]
+head(ndata)
+```
+
+### CONVERTING DATA TO TIME SERIES OBJECT
+
+```{r}
+gdp=ts(ndata, frequency= 4, start=c(1960,1))
+head(gdp)
+start(gdp)
+end(gdp)
+autoplot(gdp)
+```
+
+<hr>
+
+# STATIONARITY CHECK
+
+<hr>
+
+```{r}
+adf.test(gdp)
+```
+
+### INTERPRETATION:
+
+> p-value is less than 0.05 implies data is stationary at 95% CI
+
+<hr>
+
+# SEASONALITY CHECK
+
+<hr>
+
+```{r}
+plot(decompose(gdp, type='additive'))
+```
+
+## INTERPRETATION:
+
+> Seasonality is minute compared to the trend component, therefore we need not consider it and proceed with ARIMA having d=0
+
+<hr>
+
+# Modelling
+
+<hr>
+
+## DETERMINING THE MODEL AND ITS ORDER
+
+```{r}
+#to determine the value of p and q
+Acf(gdp)
+Pacf(gdp) 
+```
+
+## INTERPRETATION:
+
+1.  According to the Auto Correlation Plot, the value of q=3
+
+2.  According to the Partial Auto Correlation Plot, the value of p=7
+
+3.  ADF Test confirmed that the data is stationary, hence d=0
+
+4.  Since the seasonality was minute, we chose to ignore it, hence we go ahead with ARIMA Model
+
+> Therefore, the desired model becomes ARIMA (7,0,3)
+
+## MODEL FITTING
+
+```{r}
+gdparma=Arima(gdp,order=c(7,0,3))
+gdparma
+gdparmafc=forecast(gdparma,h=20)
+gdparmafc
+plot(gdparmafc)
+```
+
+## INTERPRETATION:
+
+> Recession can be defined as two consecutive quarters with negative gdp growth.. as we can see the ARIMA (7,0,3) forecast does not show any negative growth rate.
+
+We'll evaluate the model to understand it better.
+
+<hr>
+
+# EVALUATING THE MODEL
+
+<hr>
+
+```{r}
+Acf(gdparmafc$residuals)
+Box.test(gdparmafc$residuals, lag=20, type="Ljung-Box")
+plot(gdparmafc$residuals)
+```
+
+## INTERPRETATION:
+
+Since the correlogram shows that none of the sample autocorrelations for lags 1-20 exceed the significance bounds,and the p-value for the Ljung-Box test is 0.9988,which is greater than 0.05; implies accept H0
+
+> Hence it can be concluded that the model does not exhibit lack of fit.
+
+Moreover,forecast errors having constant mean and roughly constant variance. Therefore, it is plausible that the forecast errors are normally distributed with mean zero and constant variance.
+
+To sum up:
+
+> Since successive forecast errors do not seem to be correlated, and the forecast errors seem to be normally distributed with mean zero and constant variance, the ARIMA(7,0,3) does seem to provide an adequate predictive model.
+
+<hr>
+
+# AUTO ARIMA
+
+<hr>
+
+Often, the plots are not easy to interpret to determine the order of the model, like how we could in the above example; and therefore yield incorrect results.
+
+That's why we go for the auto_arima() to determine the orders.
+
+```{r}
+autogdparima=auto.arima(gdp)
+autogdparima
+autogdpfc=forecast(autogdparima,h=20)
+plot(autogdpfc)
+```
+
+## INTERPRETATION:
+
+Here, we can see that the model and its order has changed.
+
+In auto_arima() function, the model itself will generate the optimal p, d, and q values which would be suitable for the data set to provide better forecasting. The auto_arima() has also considered the minute seasonality that is present in our dataset. Hence, it also has the order of seasonal component and therefore is now referred to as the SARIMA model.
+
+We must note that the AIC value for Auto_Arima(1,1,2) (2,0,1) [4] is 780.12 and the AIC value for ARIMA (7,0,3) is 792.05. Similarly, the BIC value for Auto_Arima(1,1,2) (2,0,1) [4] is 808.32 and the BIC value for ARIMA (7,0,3) is 834.41.
+
+> Hence we conclude that ARIMA (1,1,2) (2,0,1) [4] is better than the ARIMA(7,0,3)
+
+<hr> 
+
+# FORECAST
+
+<hr>
+Here, it can be seen that around 2023, the GDP growth rate is almost crossing 0, indicating a slight negative growth.. which is indeed the current real life scenario. Recent company layoffs and subtle inflation supports the forecast made by the SARIMA model. !!
+
+> The US economy will start recovering around Q2 2024 and will remain stabilized in 2025 and 2026, with a slight downturn in 2027.
+The average U.S. recession since 1857 lasted 17 months, although the six recessions since 1980 averaged less than 10 months.
+
+<hr>
+
+# EVALUATING AUTO_ARIMA (1,1,2) (2,0,1) [4]
+
+<hr>
+
+```{r}
+Acf(autogdpfc$residuals)
+Box.test(autogdpfc$residuals, lag=20, type="Ljung-Box")
+plot(autogdpfc$residuals)
+```
+
+## INTERPRETATION:
+
+Since the correlogram shows that none of the sample autocorrelations for lags 1-20 exceed the significance bounds,and the p-value for the Ljung-Box test is 0.9994,which is greater than 0.05;implies accept H0.
+
+> Hence it can be concluded that the model does not exhibits lack of fit.
+
+Moreover,forecast errors having constant mean and roughly constant variance. Therefore, it is plausible that the forecast errors are normally distributed with mean zero and constant variance.
+
+To sum up; 
+> Since successive forecast errors do not seem to be correlated, and the forecast errors seem to be normally distributed with mean zero and constant variance, the ARIMA (1,1,2) (2,0,1) [4] does seem to provide MORE adequate predictive model THAN ARIMA (7,0,3).
+
